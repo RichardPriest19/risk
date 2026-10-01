@@ -667,3 +667,19 @@ body.meeting-mode .view { max-width: none; padding: 0; }
 @media print { .aud-figs { grid-template-columns: repeat(3, 1fr); } .aud h2 { break-after: avoid; } .aud-overall, .aud-fig { break-inside: avoid; } }
 /* Notices inside a printed document always use light colours (the document is white in both themes). */
 .doc .demo-notice, .doc .notice { background: #f3ecfb; color: #2a1a44; border-color: #6b3fa0; }
+/* Report justification: purpose, interpretation, implications */
+.aud-purpose { display: grid; grid-template-columns: minmax(150px, 22%) 1fr; gap: 6px 16px; margin: 8px 0 12px; }
+.aud-purpose dt { font-weight: 700; }
+.aud-purpose dd { margin: 0; }
+.aud-purpose ul { margin: 0; padding-left: 18px; }
+.aud-why { color: #444; font-size: .92em; }
+.aud-means { font-style: italic; color: #333; border-left: 3px solid #1c4f8a; padding-left: 10px; margin: 8px 0; }
+.aud-interp td:nth-child(4), .aud-interp td:nth-child(5) { font-size: .9em; }
+.aud-impl { border: 1px solid #d9dce1; border-radius: 6px; padding: 8px 12px; margin: 10px 0; break-inside: avoid; }
+.aud-impl h3 { margin: 2px 0 6px; }
+@media (max-width: 700px) { .aud-purpose { grid-template-columns: 1fr; } .aud-purpose dt { margin-top: 6px; } }
+.aud-interp { table-layout: fixed; width: 100%; }
+.aud-interp th:nth-child(1) { width: 17%; } .aud-interp th:nth-child(2) { width: 7.5em; } .aud-interp th:nth-child(3) { width: 9em; }
+.aud-interp th:nth-child(4) { width: 24%; } /* the implication column takes the remaining space */
+.aud-interp .es-chip { white-space: nowrap; }
+.aud-interp td { overflow-wrap: break-word; }

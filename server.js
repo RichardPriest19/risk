@@ -723,12 +723,16 @@ route('POST', '/api/users', async (req) => {
   if (!ROLES.includes(b.role)) throw new HttpError(400, 'Invalid role');
   const p = passwordProblem(b.password); if (p) throw new HttpError(400, p);
   if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(username)) throw new HttpError(409, 'That username already exists.');
+  // A deleted user's username is never reused, so records and the audit log stay attributable to one person.
+  if (db.prepare("SELECT 1 FROM audit WHERE action = 'USER_DELETED' AND entity_id = ? COLLATE NOCASE").get(username)) throw new HttpError(409, 'That username belonged to a deleted user. Choose a different one so that existing records stay attributable to the right person.');
   const { hash, salt } = hashPassword(b.password);
   const r = db.prepare('INSERT INTO users (username, full_name, role, pass_hash, salt, must_change, created_at) VALUES (?,?,?,?,?,1,?)')
     .run(username, String(b.fullName || username).slice(0, 100), b.role, hash, salt, now());
   audit(req, 'USER_CREATED', 'user', username, `Role ${b.role}`);
   return { id: Number(r.lastInsertRowid) };
 });
+// The app must always keep at least one active admin who can manage it.
+const otherActiveAdmins = (id) => db.prepare("SELECT COUNT(*) n FROM users WHERE role = 'admin' AND active = 1 AND id <> ?").get(id).n;
 route('PUT', '/api/users/:id', async (req, res, params) => {
   requireRole(req, 'admin');
   const b = await readBody(req);
@@ -738,11 +742,17 @@ route('PUT', '/api/users/:id', async (req, res, params) => {
   if (b.role !== undefined && b.role !== u.role) {
     if (!ROLES.includes(b.role)) throw new HttpError(400, 'Invalid role');
     if (u.id === req.user.id) throw new HttpError(400, 'You cannot change your own role.');
+    if (u.role === 'admin' && u.active && !otherActiveAdmins(u.id)) throw new HttpError(400, 'This is the only active admin. Make another user an admin first.');
     db.prepare('UPDATE users SET role = ? WHERE id = ?').run(b.role, u.id); changes.push(`role ${u.role} -> ${b.role}`);
   }
-  if (b.fullName !== undefined) { db.prepare('UPDATE users SET full_name = ? WHERE id = ?').run(String(b.fullName).slice(0, 100), u.id); changes.push('name'); }
+  if (b.fullName !== undefined && String(b.fullName).trim() !== u.full_name) {
+    const name = String(b.fullName).trim().slice(0, 100);
+    if (!name) throw new HttpError(400, 'Full name cannot be empty.');
+    db.prepare('UPDATE users SET full_name = ? WHERE id = ?').run(name, u.id); changes.push(`name "${u.full_name}" -> "${name}"`);
+  }
   if (b.active !== undefined && !!b.active !== !!u.active) {
     if (u.id === req.user.id) throw new HttpError(400, 'You cannot disable your own account.');
+    if (!b.active && u.role === 'admin' && !otherActiveAdmins(u.id)) throw new HttpError(400, 'This is the only active admin. Make another user an admin first.');
     db.prepare('UPDATE users SET active = ? WHERE id = ?').run(b.active ? 1 : 0, u.id);
     if (!b.active) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(u.id);
     changes.push(b.active ? 'enabled' : 'disabled');
@@ -755,7 +765,20 @@ route('PUT', '/api/users/:id', async (req, res, params) => {
     db.prepare('DELETE FROM sessions WHERE user_id = ?').run(u.id);
     changes.push('password reset');
   }
-  audit(req, 'USER_UPDATED', 'user', u.username, changes.join(', '));
+  if (changes.length) audit(req, 'USER_UPDATED', 'user', u.username, changes.join(', '));
+  return { ok: true, changes };
+});
+// Deleting a user removes the account and its sessions. Records keep the username that created or changed them,
+// and the audit log is untouched, so history stays intact.
+route('DELETE', '/api/users/:id', (req, res, params) => {
+  requireRole(req, 'admin');
+  const u = db.prepare('SELECT * FROM users WHERE id = ?').get(Number(params.id));
+  if (!u) throw new HttpError(404, 'User not found');
+  if (u.id === req.user.id) throw new HttpError(400, 'You cannot delete your own account.');
+  if (u.role === 'admin' && u.active && !otherActiveAdmins(u.id)) throw new HttpError(400, 'This is the only active admin. Make another user an admin first.');
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(u.id);
+  db.prepare('DELETE FROM users WHERE id = ?').run(u.id);
+  audit(req, 'USER_DELETED', 'user', u.username, `${u.full_name} (${u.role}${u.active ? '' : ', disabled'})`);
   return { ok: true };
 });
 
@@ -1091,7 +1114,7 @@ route('DELETE', '/api/attachments/:id', (req, res, params) => {
 });
 
 // ----- programme-level documents (CTO briefing wording) -----
-const APP_DOCS = ['briefing', 'board', 'compliance', 'technology']; // editable report wording
+const APP_DOCS = ['briefing', 'board', 'compliance', 'technology', 'finance']; // editable report wording
 route('GET', '/api/docs/:id', (req, res, params) => {
   requireRole(req);
   if (!APP_DOCS.includes(params.id)) throw new HttpError(404, 'Unknown document');

@@ -166,6 +166,7 @@ let lastReportFilters = { svc: '', qn: '', from: '', to: '', team: '', app: '' }
 // Reports page: audience reports first (board, compliance, CTO), then the assessors' working analysis.
 const REPORT_TABS = [
   ['Reports for', [['board', 'Board of Directors', 'Plain English: facts and figures, what works, concerns, actions'], ['compliance', 'Head of Compliance', 'Plain English: obligations affected, accepted risks, overdue actions, evidence'],
+    ['finance', 'Chief Financial Officer', 'Plain English: accounts, regulatory reports, payments and fraud'],
     ['technology', 'CTO - technical report', 'Findings, control areas, consistency between teams, regulatory sources'], ['briefing', null, 'The case for change, with the decisions requested']]],
   ['Working analysis', [['stats', 'Statistics', 'All charts and counts'], ['themes', 'Themes', 'What recurs across interviews'], ['trends', 'Trends', 'Month by month']]],
 ];
@@ -176,7 +177,7 @@ async function viewReports(tab = 'board') {
   const f = lastReportFilters;
   const audBtns = (k) => `<button class="btn" id="rWordAud" data-kind="${k}">Download Word (.docx)</button><a class="btn btn-primary" href="#/print/${k}">Print / PDF</a>`;
   const actions = {
-    board: audBtns('board'), compliance: audBtns('compliance'), technology: audBtns('technology'),
+    board: audBtns('board'), compliance: audBtns('compliance'), finance: audBtns('finance'), technology: audBtns('technology'),
     stats: '<button class="btn" id="rCsv">Export statistics (CSV)</button><a class="btn" href="#/print/stats">Print statistics report</a>',
     themes: '<button class="btn" id="rWord">Download Word (.docx)</button><a class="btn" href="#/print/themes">Print themes report</a>',
     trends: '<a class="btn" href="#/print/trends">Print trends report</a>',

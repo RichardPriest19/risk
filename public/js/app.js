@@ -260,7 +260,7 @@ const routes = [
   [/^#\/print\/compare\?(.*)$/, (m) => viewPrintCompare(new URLSearchParams(m[1]))],
   [/^#\/findings$/, () => viewFindings()],
   [/^#\/finding\/(new|\d+)(?:\?interview=(\d+)(?:&section=((?:[a-z]{2,12}-)?s\d+)(?:&q=([\w-]+))?)?)?$/, (m) => viewFinding(m[1], m[2], m[3], m[4])],
-  [/^#\/reports(?:\/(board|compliance|technology|briefing|stats|themes|trends))?(?:\?svc=(\d+))?$/, (m) => { if (m[2]) lastReportFilters = { ...lastReportFilters, svc: m[2] }; return viewReports(m[1] || 'board'); }],
+  [/^#\/reports(?:\/(board|compliance|finance|technology|briefing|stats|themes|trends))?(?:\?svc=(\d+))?$/, (m) => { if (m[2]) lastReportFilters = { ...lastReportFilters, svc: m[2] }; return viewReports(m[1] || 'board'); }],
   [/^#\/services$/, () => viewServices()],
   [/^#\/service\/(new|\d+)$/, (m) => viewService(m[1])],
   [/^#\/library(?:\/([\w-]+))?$/, (m) => viewLibrary(m[1] || 'guide')],
@@ -572,17 +572,21 @@ async function viewUsers() {
   setActiveNav('admin');
   const users = await api('GET', '/api/users');
   const roleHelp = 'Admin: everything including users, deletion and audit log. Assessor: create and edit interviews and findings, import/export. Viewer: read-only, reports and printing.';
+  const ROLE_LABEL = { admin: 'Admin', assessor: 'Assessor', viewer: 'Viewer' };
+  const me = (u) => u.id === state.user.id;
   view().innerHTML = `<div class="page-head"><h1>Administration</h1></div>${adminTabs('users')}
     <section class="card"><h2>Users</h2><p class="hint">${esc(roleHelp)}</p>
       <table class="table"><thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Status</th><th>Last sign-in</th><th>Actions</th></tr></thead><tbody>
       ${users.map((u) => `<tr data-id="${u.id}">
-        <td>${esc(u.username)}</td><td>${esc(u.fullName)}</td>
-        <td><select data-act="role" ${u.id === state.user.id ? 'disabled' : ''}>${options(['admin', 'assessor', 'viewer'], u.role)}</select></td>
+        <td>${esc(u.username)}${me(u) ? ' <span class="hint">(you)</span>' : ''}</td><td>${esc(u.fullName)}</td>
+        <td><span class="role-tag">${esc(ROLE_LABEL[u.role] || u.role)}</span></td>
         <td>${u.active ? 'Active' : '<strong>Disabled</strong>'}${u.lockedUntil && u.lockedUntil > Date.now() ? ' · <strong>Locked</strong>' : ''}${u.mustChange ? ' · must change password' : ''}</td>
         <td>${fmtDateTime(u.lastLogin) || 'Never'}</td>
-        <td class="row">${u.id !== state.user.id ? `<button class="btn btn-small" data-act="toggle">${u.active ? 'Disable' : 'Enable'}</button>` : ''}
+        <td class="row"><button class="btn btn-small" data-act="edit">Edit</button>
+          ${!me(u) ? `<button class="btn btn-small" data-act="toggle">${u.active ? 'Disable' : 'Enable'}</button>` : ''}
           ${u.lockedUntil && u.lockedUntil > Date.now() ? '<button class="btn btn-small" data-act="unlock">Unlock</button>' : ''}
-          <button class="btn btn-small" data-act="reset">Reset password</button></td></tr>`).join('')}
+          <button class="btn btn-small" data-act="reset">Reset password</button>
+          ${!me(u) ? '<button class="btn btn-small btn-danger" data-act="delete">Delete</button>' : ''}</td></tr>`).join('')}
       </tbody></table></section>
     <section class="card"><h2>Add user</h2>
       <form id="addUser" class="form-grid">
@@ -600,7 +604,30 @@ async function viewUsers() {
   $$('tr[data-id]').forEach((tr) => {
     const id = tr.dataset.id; const u = users.find((x) => String(x.id) === id);
     const put = (body, msg) => api('PUT', `/api/users/${id}`, body).then(() => { toast(msg); viewUsers(); }).catch(fail);
-    const sel = $('[data-act=role]', tr); if (sel) sel.onchange = () => put({ role: sel.value }, 'Role updated.');
+    $('[data-act=edit]', tr).onclick = () => {
+      const d = document.createElement('dialog'); d.className = 'dialog';
+      d.innerHTML = `<form method="dialog" class="stack"><h3>Edit user</h3>
+        <label>Username <input value="${esc(u.username)}" disabled></label>
+        <p class="hint">Usernames cannot be changed: records and the audit log identify people by them. To rename, add a new user and disable this one.</p>
+        <label>Full name <input name="fullName" required maxlength="100" value="${esc(u.fullName)}"></label>
+        <label>Role <select name="role" ${me(u) ? 'disabled' : ''}>${options([['admin', 'Admin'], ['assessor', 'Assessor'], ['viewer', 'Viewer']], u.role)}</select></label>
+        ${me(u) ? '<p class="hint">You cannot change your own role or disable your own account.</p>' : `<label class="check"><input type="checkbox" name="active"${u.active ? ' checked' : ''}> Account active (untick to disable sign-in)</label>`}
+        <div class="row-end"><button value="cancel" formnovalidate class="btn">Cancel</button><button value="ok" class="btn btn-primary">Save</button></div></form>`;
+      document.body.appendChild(d);
+      const f = $('form', d);
+      onDialogChoice(d, (choice) => {
+        if (choice !== 'ok') return;
+        const body = { fullName: f.elements.fullName.value };
+        if (!me(u)) { body.role = f.elements.role.value; body.active = f.elements.active.checked; }
+        put(body, 'User updated.');
+      });
+      d.showModal();
+    };
+    const del = $('[data-act=delete]', tr);
+    if (del) del.onclick = async () => {
+      if (!(await modalConfirm(`Delete ${u.username} (${u.fullName})? They will no longer be able to sign in. Their name stays on the records they created and in the audit log. To keep the account but stop access, disable it instead.`, 'Delete user'))) return;
+      api('DELETE', `/api/users/${id}`).then(() => { toast('User deleted.'); viewUsers(); }).catch(fail);
+    };
     const tg = $('[data-act=toggle]', tr); if (tg) tg.onclick = () => put({ active: !u.active }, u.active ? 'User disabled.' : 'User enabled.');
     const ul = $('[data-act=unlock]', tr); if (ul) ul.onclick = () => put({ unlock: true }, 'Account unlocked.');
     $('[data-act=reset]', tr).onclick = () => {
