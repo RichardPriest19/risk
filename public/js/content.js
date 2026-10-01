@@ -3267,6 +3267,12 @@ window.TR = (function () {
       'Fraud and financial crime': ['The bank could lose money to fraud or be used for financial crime, with legal and reputational consequences.', 'Money and payments are protected from fraud, avoiding losses and legal consequences.'],
       'Other': ['The issue could lead to disruption, loss or regulatory concern if not addressed.', 'Controls in this area support the safe running of the bank.'],
     },
+    // Plain titles for questionnaire areas whose own title contains an abbreviation (a test checks none is missed).
+    sections: {
+      s9: 'Automated build and release of software', s25: 'Developers\' awareness of what the Prudential Regulation Authority expects',
+      'hr-s1': 'Human resources role and responsibilities', 'hr-s9': 'Human resources systems and employee data',
+      'hr-s10': 'Human resources and payroll suppliers, and resilience', 'hr-s14': 'Human resources governance, management information and records',
+    },
     depts: { dev: 'Software development', hr: 'Human resources', fin: 'Finance', ops: 'Technology operations', sec: 'Information security' },
   };
 

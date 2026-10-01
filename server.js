@@ -1114,7 +1114,7 @@ route('DELETE', '/api/attachments/:id', (req, res, params) => {
 });
 
 // ----- programme-level documents (CTO briefing wording) -----
-const APP_DOCS = ['briefing', 'board', 'compliance', 'technology', 'finance']; // editable report wording
+const APP_DOCS = ['briefing', 'board', 'compliance', 'technology', 'finance', 'people', 'operations', 'security', 'development']; // editable report wording
 route('GET', '/api/docs/:id', (req, res, params) => {
   requireRole(req);
   if (!APP_DOCS.includes(params.id)) throw new HttpError(404, 'Unknown document');

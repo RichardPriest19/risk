@@ -164,10 +164,10 @@ function readFilters() {
 let lastReportFilters = { svc: '', qn: '', from: '', to: '', team: '', app: '' };
 
 // Reports page: audience reports first (board, compliance, CTO), then the assessors' working analysis.
-const REPORT_TABS = [
+const REPORT_TABS = () => [
   ['Reports for', [['board', 'Board of Directors', 'Plain English: facts and figures, what works, concerns, actions'], ['compliance', 'Head of Compliance', 'Plain English: obligations affected, accepted risks, overdue actions, evidence'],
-    ['finance', 'Chief Financial Officer', 'Plain English: accounts, regulatory reports, payments and fraud'],
     ['technology', 'CTO - technical report', 'Findings, control areas, consistency between teams, regulatory sources'], ['briefing', null, 'The case for change, with the decisions requested']]],
+  ['Department heads', Object.entries(DEPTS).map(([k, c]) => [k, c.label, c.hint])],
   ['Working analysis', [['stats', 'Statistics', 'All charts and counts'], ['themes', 'Themes', 'What recurs across interviews'], ['trends', 'Trends', 'Month by month']]],
 ];
 async function viewReports(tab = 'board') {
@@ -177,7 +177,7 @@ async function viewReports(tab = 'board') {
   const f = lastReportFilters;
   const audBtns = (k) => `<button class="btn" id="rWordAud" data-kind="${k}">Download Word (.docx)</button><a class="btn btn-primary" href="#/print/${k}">Print / PDF</a>`;
   const actions = {
-    board: audBtns('board'), compliance: audBtns('compliance'), finance: audBtns('finance'), technology: audBtns('technology'),
+    board: audBtns('board'), compliance: audBtns('compliance'), technology: audBtns('technology'), ...Object.fromEntries(Object.keys(DEPTS).map((k) => [k, audBtns(k)])),
     stats: '<button class="btn" id="rCsv">Export statistics (CSV)</button><a class="btn" href="#/print/stats">Print statistics report</a>',
     themes: '<button class="btn" id="rWord">Download Word (.docx)</button><a class="btn" href="#/print/themes">Print themes report</a>',
     trends: '<a class="btn" href="#/print/trends">Print trends report</a>',
@@ -189,7 +189,7 @@ async function viewReports(tab = 'board') {
   const tabLabel = (k, l) => l || `${briefingTabLabel()} paper`;
   view().innerHTML = `
     <div class="page-head"><h1>Reports</h1><div class="row">${actions}</div></div>
-    <nav class="report-nav" aria-label="Reports">${REPORT_TABS.map(([group, items]) => `<div class="rn-group"><span class="rn-label">${esc(group)}</span><div class="rn-items">${items.map(([k, l, hint]) => `<a href="#/reports/${k}" class="rn-item${tab === k ? ' active' : ''}"><strong>${esc(tabLabel(k, l))}</strong><small>${esc(hint)}</small></a>`).join('')}</div></div>`).join('')}</nav>
+    <nav class="report-nav" aria-label="Reports">${REPORT_TABS().map(([group, items]) => `<div class="rn-group"><span class="rn-label">${esc(group)}</span><div class="rn-items">${items.map(([k, l, hint]) => `<a href="#/reports/${k}" class="rn-item${tab === k ? ' active' : ''}"><strong>${esc(tabLabel(k, l))}</strong><small>${esc(hint)}</small></a>`).join('')}</div></div>`).join('')}</nav>
     <div class="filters card">
       ${state.services.length ? `<label>Business service <select id="rSvc">${options(state.services.map((s) => [s.id, `${s.ref} ${s.name}`]), f.svc, 'All services')}</select></label>` : ''}
       ${MULTI_QN ? `<label>Questionnaire <select id="rQn">${options(T.questionnaires.map((q) => [q.id, q.title]), f.qn, 'All questionnaires')}</select></label>` : ''}

@@ -260,7 +260,7 @@ const routes = [
   [/^#\/print\/compare\?(.*)$/, (m) => viewPrintCompare(new URLSearchParams(m[1]))],
   [/^#\/findings$/, () => viewFindings()],
   [/^#\/finding\/(new|\d+)(?:\?interview=(\d+)(?:&section=((?:[a-z]{2,12}-)?s\d+)(?:&q=([\w-]+))?)?)?$/, (m) => viewFinding(m[1], m[2], m[3], m[4])],
-  [/^#\/reports(?:\/(board|compliance|finance|technology|briefing|stats|themes|trends))?(?:\?svc=(\d+))?$/, (m) => { if (m[2]) lastReportFilters = { ...lastReportFilters, svc: m[2] }; return viewReports(m[1] || 'board'); }],
+  [/^#\/reports(?:\/(board|compliance|finance|people|operations|security|development|technology|briefing|stats|themes|trends))?(?:\?svc=(\d+))?$/, (m) => { if (m[2]) lastReportFilters = { ...lastReportFilters, svc: m[2] }; return viewReports(m[1] || 'board'); }],
   [/^#\/services$/, () => viewServices()],
   [/^#\/service\/(new|\d+)$/, (m) => viewService(m[1])],
   [/^#\/library(?:\/([\w-]+))?$/, (m) => viewLibrary(m[1] || 'guide')],

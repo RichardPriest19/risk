@@ -488,7 +488,7 @@ function renderAudience(kind, container, ivs, fs, flt) {
       ${field('preparedBy', 'Prepared by')}${field('date', 'Date', 'date')}
       ${kind === 'technology' ? field('message', 'Introduction (optional)', 'area', 4) : `${field('overall', 'Overall position', 'overall')}
       ${field('message', 'Summary message (optional)', 'area', 4, 'A short paragraph in plain English, shown under the overall position.')}
-      ${field('decisions', kind === 'board' ? 'Decisions and support needed' : kind === 'finance' ? 'Matters for the Chief Financial Officer' : 'Matters for the Head of Compliance', 'area', 4)}`}
+      ${field('decisions', kind === 'board' ? 'Decisions and support needed' : DEPTS[kind] ? `Matters for the ${DEPTS[kind].label}` : 'Matters for the Head of Compliance', 'area', 4)}`}
       <label class="check"><input type="checkbox" data-aud="includeDemo"${doc.includeDemo ? ' checked' : ''} ${ro ? 'disabled' : ''}> Include demo data</label>
     </form>
     <div class="brief-preview-wrap"><p class="hint">Preview</p><article class="doc" id="audPreview"></article></div>
@@ -566,8 +566,8 @@ async function wordAudience(kind) {
         ['Issues raised in the last three months', String(m.raised90.length), '', ''], ['Issues resolved in the last three months', String(m.resolved90.length), '', '']], { header: true, widths: [2.4, 0.8, 1.2, 1] }), means(trendImplication(m)),
       H1('How these results were produced, and how far to rely on them'), reliab(false),
       H1('Decisions and support needed'), d.decisions ? D.table([[{ content: d.decisions, fill: 'E6EEF8' }]], { widths: [1] }) : D.p('None requested in this report.')];
-  } else if (kind === 'finance') {
-    body = [...head, ...wordFinanceBody(m, { H1, purpose, overall, figs, interp, good, concerns, svcTable, reliab, means, toneFill })];
+  } else if (DEPTS[kind]) {
+    body = [...head, ...wordDeptBody(m, { H1, purpose, overall, figs, interp, good, concerns, svcTable, reliab, means, toneFill })];
   } else if (kind === 'compliance') {
     const soon = m.accepted.filter((x) => x.state !== 'Current').length;
     body = [...head, H1('Summary'), overall,
@@ -606,15 +606,12 @@ async function wordAudience(kind) {
   saveDocx(D.build({ title: d.title, author: state.user.fullName, footer: `${d.title} · ${wordFooter()}` }, body.join('')), `${d.title.replace(/:\s*/g, ' - ').replace(/[\\/*?"<>|]/g, '-')} ${today()}.docx`);
 }
 
-// ---------- Chief Financial Officer: accounts, regulatory reports, payments and fraud ----------
-// Plain English. Scope: Accounts and finance interviews, plus findings from anywhere in the bank whose category or
-// regulatory area affects the accounts, regulatory reports, payments or fraud.
-const FIN_CATS = ['Financial and regulatory reporting', 'Fraud and financial crime'];
-const FIN_AREAS = ['Regulatory reporting', 'Financial crime & fraud'];
-const isFinancial = (f) => FIN_CATS.includes(f.category) || findingUkAreas(f).some((a) => FIN_AREAS.includes(a));
-const affectsFigures = (f) => f.category === 'Financial and regulatory reporting' || findingUkAreas(f).includes('Regulatory reporting');
-const affectsMoney = (f) => f.category === 'Fraud and financial crime' || findingUkAreas(f).includes('Financial crime & fraud');
-// What each finance control area protects, in plain words.
+// ---------- Department head reports (finance, human resources, technology operations, information security, software development) ----------
+// Plain English, one shared structure. Scope: the department's own interviews, plus findings from anywhere in the bank that
+// concern its area (by category, template or regulatory area). Two department measures are assessed alongside the usual ones.
+const anyTpl = (f, ids = [], prefixes = []) => !!f.templateId && (ids.includes(f.templateId) || prefixes.some((p) => f.templateId.startsWith(p)));
+const anyArea = (f, areas) => findingUkAreas(f).some((a) => areas.includes(a));
+const isFinancial = (f) => ['Financial and regulatory reporting', 'Fraud and financial crime'].includes(f.category) || anyArea(f, ['Regulatory reporting', 'Financial crime & fraud']);
 const FIN_PROTECTS = {
   'fin-s1': 'Clear responsibility for finance processes and the systems behind them.',
   'fin-s2': 'Knowing which systems produce the bank\'s numbers, and who owns them.',
@@ -630,112 +627,208 @@ const FIN_PROTECTS = {
   'fin-s12': 'Preventing and detecting fraud in finance.',
   'fin-s13': 'Being able to prove to auditors and regulators what happened.',
 };
-// Builds the model for any audience; the finance report narrows the scope first.
+const deptCommon = (role, team) => [
+  ['How the results were obtained', `Through structured interviews with the ${team}, comparing what they told us with written procedures, with what our systems actually enforce, and with evidence that controls really operate.`],
+  ['Why the results should be noted', `Formally noting this report records that these risks have been reported to the person responsible for the area. If a problem later happens through a known weakness, the bank and the ${role} will be asked what was known and what was done about it.`],
+  [`What the ${role} is asked to do`, 'Note the results; confirm owners and target dates for the serious issues; and consider the matters raised at the end of this report.'],
+];
+const DEPTS = {
+  finance: {
+    qn: 'fin', label: 'Chief Financial Officer', title: 'Technology risk: accounts and finance report', noun: 'finance', team: 'finance team',
+    hint: 'Plain English: accounts, regulatory reports, payments and fraud', protects: FIN_PROTECTS, relevant: isFinancial,
+    elsewhereTitle: 'Technology issues elsewhere that could affect the accounts or payments', elsewhereIntro: 'These were raised in interviews outside finance, but could affect the figures, the regulatory reports or the bank\'s payments.',
+    purpose: [
+      ['Purpose', 'To give the Chief Financial Officer an evidence-based view of the controls over the systems, data, spreadsheets and payments behind the bank\'s accounts and its reports to regulators, and of technology issues elsewhere in the bank that could affect them.'],
+      ['Why the Chief Financial Officer needs it', 'The Chief Financial Officer is the senior manager responsible for the integrity of the bank\'s financial information and its regulatory reporting, and is personally accountable for taking reasonable steps to keep them accurate. Most of the bank\'s figures are produced, moved or calculated by technology - systems, data feeds and spreadsheets - so weaknesses in those controls are weaknesses in the figures.'],
+      ['Legal and regulatory basis', 'The bank must keep adequate accounting records (Companies Act 2006); report accurately and on time to the Prudential Regulation Authority and deal openly with it; and, as a large organisation, may be liable under the new offence of failing to prevent fraud (in force from 1 September 2025 - scope to be confirmed). Our external auditors also rely on these controls when auditing the accounts.'],
+    ],
+    measures: [
+      { label: 'Issues affecting the accounts or regulatory reports', fig: 'affecting the accounts or regulatory reports', test: (f) => f.category === 'Financial and regulatory reporting' || anyArea(f, ['Regulatory reporting']),
+        why: (n) => `${plural(n, 'open issue')} could affect the accuracy of our accounts or of our reports to regulators.`, effect: 'Wrong figures could mislead the board, our auditors and our regulators. Reports to the Prudential Regulation Authority may have to be resubmitted, which it treats seriously, and the senior manager responsible for financial information is personally accountable. Auditors may also extend their testing, adding cost.',
+        goodWhy: 'No open issues are known to affect the accounts or our reports to regulators.', goodEffect: 'Supports confidence that the figures the board, auditors and regulators rely on are accurate.' },
+      { label: 'Payment and fraud issues', fig: 'payment and fraud issues', test: (f) => f.category === 'Fraud and financial crime' || anyArea(f, ['Financial crime & fraud']),
+        why: (n) => `${plural(n, 'open issue')} could let money be paid wrongly or fraudulently.`, effect: 'The bank could lose money through fraudulent or mistaken payments. Under the new legal duty to prevent fraud, a known weak control could also expose the bank to prosecution as well as loss.',
+        goodWhy: 'No open issues are known in payment or fraud controls.', goodEffect: 'Protects the bank\'s money and reduces its exposure under the legal duty to prevent fraud.' },
+    ],
+  },
+  people: {
+    qn: 'hr', label: 'Head of Human Resources', title: 'Technology risk: human resources report', noun: 'human resources', team: 'human resources team',
+    hint: 'Plain English: joiners and leavers, checks on staff, accountability, training, conduct',
+    relevant: (f) => f.category === 'People risk' || anyTpl(f, ['tpl-leaver-access', 'tpl-key-person'], ['tpl-hr-']) || anyArea(f, ['Whistleblowing', 'Remuneration']),
+    elsewhereTitle: 'Issues raised elsewhere that involve people controls', elsewhereIntro: 'These were raised in interviews outside human resources, but depend on people processes such as leaver notifications, checks on staff or key-person cover.',
+    purpose: [
+      ['Purpose', 'To give the Head of Human Resources an evidence-based view of the people controls that the bank\'s technology and regulatory controls depend on - checks on new staff, access when people join, move or leave, the accountability of senior managers, training, conduct and whistleblowing - and of issues elsewhere in the bank that involve them.'],
+      ['Why the Head of Human Resources needs it', 'Many technology controls start with a people process. If leavers are not reported promptly, or checks on new staff are incomplete, access controls in every system fail. Human resources also runs the processes behind the personal accountability rules for senior managers and key staff, which our regulators supervise closely.'],
+      ['Legal and regulatory basis', 'The Prudential Regulation Authority and the Financial Conduct Authority require the bank to assess certain staff as fit and proper each year, to obtain and give regulatory references, to train staff on the conduct rules, to have whistleblowing arrangements overseen by a named board member, and to pay staff in a way that is consistent with sound management of risk. Employee personal data must be handled in line with data protection law.'],
+    ],
+    measures: [
+      { label: 'Joiner, mover and leaver issues', fig: 'joiner, mover and leaver issues', test: (f) => anyTpl(f, ['tpl-hr-leaver-notification', 'tpl-leaver-access', 'tpl-hr-screening', 'tpl-hr-contractors']),
+        why: (n) => `${plural(n, 'open issue')} ${n === 1 ? 'affects' : 'affect'} checks on new staff or access when people join, move or leave.`, effect: 'People who should no longer have access may still have it, and people may start work before we know they can be trusted. This is a common route to fraud and data theft, and it undermines access controls in every system.',
+        goodWhy: 'No open issues affect checks on staff or access when people join, move or leave.', goodEffect: 'Access across the bank can be trusted to follow people\'s roles.' },
+      { label: 'Accountability, conduct and pay issues', fig: 'accountability, conduct and pay issues', test: (f) => anyTpl(f, ['tpl-hr-certification', 'tpl-hr-references', 'tpl-hr-training', 'tpl-hr-conduct-handling', 'tpl-hr-whistleblowing', 'tpl-hr-incentives']) || anyArea(f, ['Whistleblowing', 'Remuneration']),
+        why: (n) => `${plural(n, 'open issue')} ${n === 1 ? 'affects' : 'affect'} checks on key staff, training, conduct, whistleblowing or pay.`, effect: 'These processes are required by our regulators. Weaknesses can lead to regulatory action and to the wrong people in key roles, and they weaken the personal accountability of senior managers.',
+        goodWhy: 'No open issues affect checks on key staff, training, conduct, whistleblowing or pay.', goodEffect: 'The bank can show its regulators that key staff are checked, trained and accountable.' },
+    ],
+  },
+  operations: {
+    qn: 'ops', label: 'Head of Technology Operations', title: 'Technology risk: technology operations report', noun: 'technology operations', team: 'technology operations teams',
+    hint: 'Plain English: keeping services running, recovery, change, suppliers',
+    relevant: (f) => ['Operational resilience', 'Backup and recovery', 'Business continuity', 'Incident management', 'Logging and monitoring', 'Cloud security', 'Container security'].includes(f.category) || anyTpl(f, ['tpl-eol-components', 'tpl-emergency-change', 'tpl-third-party-exit'], ['tpl-ops-']),
+    elsewhereTitle: 'Issues raised elsewhere that affect running and recovering our technology', elsewhereIntro: 'These were raised in interviews outside technology operations, but affect how our technology is run, monitored or recovered.',
+    purpose: [
+      ['Purpose', 'To give the Head of Technology Operations an evidence-based view of the controls that keep the bank\'s technology running, recoverable and up to date - knowing what technology we have, controlling changes to it, monitoring it, handling incidents, backups and recovery, cloud services and suppliers - and of issues elsewhere in the bank that affect them.'],
+      ['Why the Head of Technology Operations needs it', 'Our most important services depend on this technology. The bank has agreed limits on how much disruption each important service can suffer, and must prove by testing that it can recover within them. Most of that depends on technology operations.'],
+      ['Legal and regulatory basis', 'The Prudential Regulation Authority requires the bank to identify its important services, set limits of disruption, map the technology behind them and test recovery against severe but plausible events; to manage suppliers, including cloud providers, so that their failure does not stop the bank\'s services; and to tell its regulators promptly about major incidents.'],
+    ],
+    measures: [
+      { label: 'Recovery and resilience issues', fig: 'recovery and resilience issues', test: (f) => ['Operational resilience', 'Backup and recovery', 'Business continuity'].includes(f.category) || anyTpl(f, ['tpl-ops-immutable', 'tpl-ops-monitoring', 'tpl-ops-problem', 'tpl-third-party-exit', 'tpl-ops-shared-responsibility']),
+        why: (n) => `${plural(n, 'open issue')} ${n === 1 ? 'affects' : 'affect'} our ability to keep services running or to recover them.`, effect: 'Important services could be down for longer than the bank has agreed it can tolerate, harming customers and breaching regulatory requirements.',
+        goodWhy: 'No open issues affect our ability to keep services running or to recover them.', goodEffect: 'The bank is better placed to stay within its agreed limits of disruption.' },
+      { label: 'Control of infrastructure issues', fig: 'infrastructure control issues', test: (f) => ['Cloud security', 'Container security'].includes(f.category) || anyTpl(f, ['tpl-ops-cmdb', 'tpl-ops-iac-drift', 'tpl-ops-root-accounts', 'tpl-ops-patching', 'tpl-ops-k8s', 'tpl-eol-components', 'tpl-emergency-change', 'tpl-cloud-config']),
+        why: (n) => `${plural(n, 'open issue')} ${n === 1 ? 'affects' : 'affect'} how our technology is changed, set up or kept up to date.`, effect: 'Uncontrolled or outdated technology is a leading cause of outages and security breaches.',
+        goodWhy: 'No open issues affect how our technology is changed, set up or kept up to date.', goodEffect: 'Changes and updates to our technology are under control, reducing outages.' },
+    ],
+  },
+  security: {
+    qn: 'sec', label: 'Head of Information Security', title: 'Technology risk: information security report', noun: 'information security', team: 'information security team',
+    hint: 'Plain English: protection from attack, detection and response',
+    relevant: (f) => ['Access management', 'Application security', 'Secrets management', 'Vulnerability management', 'Software supply chain', 'Data protection'].includes(f.category) || anyTpl(f, ['tpl-logging', 'tpl-no-pentest', 'tpl-cloud-config'], ['tpl-sec-']),
+    elsewhereTitle: 'Security issues raised elsewhere in the bank', elsewhereIntro: 'These were raised in interviews outside information security, but affect how well the bank is protected.',
+    purpose: [
+      ['Purpose', 'To give the Head of Information Security an evidence-based view of how well the bank is protected against cyber attack and data loss, how well it would detect and respond to an attack, and of security issues raised elsewhere in the bank.'],
+      ['Why the Head of Information Security needs it', 'Cyber attacks are one of the most likely causes of serious disruption, data loss and fraud. Our regulators treat cyber resilience as a standing priority, and the board relies on the security function to tell it how exposed the bank is.'],
+      ['Legal and regulatory basis', 'The Prudential Regulation Authority expects banks to manage cyber risk as part of running the bank safely and keeping important services within their limits of disruption, and may test this directly. Personal data must be kept secure under data protection law, with serious breaches reported to the Information Commissioner within 72 hours.'],
+    ],
+    measures: [
+      { label: 'Ways an attacker could get in', fig: 'ways an attacker could get in', test: (f) => ['Access management', 'Vulnerability management', 'Secrets management', 'Application security', 'Cloud security'].includes(f.category) || anyTpl(f, ['tpl-sec-mfa-gaps', 'tpl-sec-scan-coverage', 'tpl-sec-supplier-access', 'tpl-sec-encryption-keys']),
+        why: (n) => `${plural(n, 'open issue')} could give an attacker a way into our systems or data.`, effect: 'An attacker could steal customer data or money, or disrupt services. Serious data breaches must be reported to the Information Commissioner, and can lead to fines and loss of customer trust.',
+        goodWhy: 'No open issues are known that would give an attacker an easy way in.', goodEffect: 'The bank is a harder target, protecting customers, their money and their data.' },
+      { label: 'Detecting and responding to attacks', fig: 'detection and response issues', test: (f) => ['Logging and monitoring', 'Incident management'].includes(f.category) || anyTpl(f, ['tpl-sec-detection', 'tpl-sec-ir-exercise', 'tpl-logging', 'tpl-incident-awareness']),
+        why: (n) => `${plural(n, 'open issue')} ${n === 1 ? 'affects' : 'affect'} how quickly we would spot and respond to an attack.`, effect: 'An attack could go unnoticed for longer and be handled more slowly, increasing the harm and risking late reports to our regulators.',
+        goodWhy: 'No open issues affect our ability to spot and respond to an attack.', goodEffect: 'Attacks are more likely to be caught early and contained.' },
+    ],
+  },
+  development: {
+    qn: 'dev', label: 'Head of Software Development', title: 'Technology risk: software development report', noun: 'software development', team: 'development teams',
+    hint: 'Plain English: how changes are built, tested and released',
+    relevant: (f) => ['Change management', 'CI/CD and pipeline security', 'Application security', 'Secrets management', 'Software supply chain', 'Testing'].includes(f.category) || anyTpl(f, ['tpl-threat-modelling', 'tpl-repo-access', 'tpl-security-gates']),
+    elsewhereTitle: 'Issues raised elsewhere that affect how software is built and changed', elsewhereIntro: 'These were raised in interviews outside software development, but affect how our software is built, tested or released.',
+    purpose: [
+      ['Purpose', 'To give the Head of Software Development an evidence-based view of how software is designed, built, tested, changed and supported - the controls that stop faults, security weaknesses and unauthorised changes from reaching the systems customers rely on.'],
+      ['Why the Head of Software Development needs it', 'Most incidents, and many security breaches, start with a change to software. How changes are reviewed, tested and released, and who can make them, decides whether the bank\'s systems stay reliable and secure. In 2022 a bank in the United Kingdom was fined more than 48 million pounds because a major system change was not properly governed.'],
+      ['Legal and regulatory basis', 'The Prudential Regulation Authority requires the bank to control its affairs responsibly, with effective risk management - including over changes to its technology; to keep important services within their limits of disruption; and to manage the suppliers whose software it uses. Named senior managers are personally accountable for these areas.'],
+    ],
+    measures: [
+      { label: 'Control of changes to live systems', fig: 'change control issues', test: (f) => ['Change management', 'CI/CD and pipeline security', 'Testing'].includes(f.category),
+        why: (n) => `${plural(n, 'open issue')} ${n === 1 ? 'affects' : 'affect'} how changes to our software are checked, tested and released.`, effect: 'Untested or unauthorised changes could reach customers, causing outages or wrong results, or hiding fraud. Poorly governed change has been behind some of the most serious technology failures at banks in the United Kingdom.',
+        goodWhy: 'No open issues affect how changes are checked, tested and released.', goodEffect: 'Changes reach customers safely, reducing outages and errors caused by change.' },
+      { label: 'Security of our software', fig: 'software security issues', test: (f) => ['Application security', 'Secrets management', 'Software supply chain'].includes(f.category) || anyTpl(f, ['tpl-threat-modelling', 'tpl-repo-access']),
+        why: (n) => `${plural(n, 'open issue')} ${n === 1 ? 'affects' : 'affect'} how securely our software is built.`, effect: 'Weaknesses built into our software could be used by attackers to steal data or money, or to disrupt services.',
+        goodWhy: 'No open issues affect how securely our software is built.', goodEffect: 'Our software is harder to attack, protecting customers and their data.' },
+    ],
+  },
+};
+Object.entries(DEPTS).forEach(([k, c]) => {
+  AUD_KINDS[k] = { label: c.label, tab: c.label, defaults: { title: c.title } };
+  AUD_PURPOSE[k] = [...c.purpose, ...deptCommon(c.label, c.team)];
+});
+const capFirst = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+// Builds the model for any audience; department reports narrow the scope first.
 function audModelFor(kind, ivsAll, fsAll, flt, doc) {
-  if (kind !== 'finance') return audienceModel(ivsAll, fsAll, flt, doc);
-  const finIvs = ivsAll.filter((i) => qnIdOf(i) === 'fin');
-  const ids = new Set(finIvs.map((i) => i.id));
-  const fsIn = fsAll.filter((f) => ids.has(f.interviewId) || isFinancial(f));
-  const m = audienceModel(finIvs, fsIn, flt, doc);
-  m.allIvs = ivsAll;
-  m.finIds = ids;
-  const fin = T.qnById('fin');
-  m.finAreas = fin.sections.map((s) => {
+  const c = DEPTS[kind];
+  if (!c) return audienceModel(ivsAll, fsAll, flt, doc);
+  const deptIvs = ivsAll.filter((i) => qnIdOf(i) === c.qn);
+  const ids = new Set(deptIvs.map((i) => i.id));
+  const m = audienceModel(deptIvs, fsAll.filter((f) => ids.has(f.interviewId) || c.relevant(f)), flt, doc);
+  m.dept = c; m.allIvs = ivsAll; m.deptIds = ids;
+  const q = T.qnById(c.qn);
+  m.deptAreas = q.sections.map((s) => {
     const rated = m.ivs.map((i) => i.data.sections?.[s.id]?.rating).filter((r) => r && r !== 'Not assessed' && r !== 'Not applicable');
     const eff = rated.filter((r) => r === 'Effective').length, part = rated.filter((r) => r === 'Partially effective').length, ineff = rated.filter((r) => r === 'Ineffective').length;
-    const tone = !rated.length ? 'none' : ineff ? 'concern' : part ? 'watch' : 'good';
-    return { s, n: rated.length, eff, part, ineff, tone, protects: FIN_PROTECTS[s.id] || '' };
+    return { s, n: rated.length, eff, part, ineff, tone: !rated.length ? 'none' : ineff ? 'concern' : part ? 'watch' : 'good',
+      protects: c.protects?.[s.id] || (P.impacts[T.sectionCategory[s.id]] || P.impacts.Other)[1] };
   });
-  m.figures = m.open.filter((x) => affectsFigures(x.f));
-  m.money = m.open.filter((x) => affectsMoney(x.f));
+  m.measureHits = c.measures.map((x) => m.open.filter((o) => x.test(o.f)));
   m.elsewhere = m.open.filter((x) => !ids.has(x.f.interviewId));
-  // Evidence by finance area.
   const ev = m.ivs.flatMap((i) => evidenceRows(i, [])).filter((r) => r.status && r.status !== 'Not requested');
-  m.evByArea = fin.sections.map((s) => { const rs = ev.filter((r) => r.s.id === s.id); return { s, asked: rs.length, checked: rs.filter((r) => r.status === 'Seen - verified').length, waiting: rs.filter((r) => r.status === 'Requested').length, missing: rs.filter((r) => r.status === 'Not available').length }; }).filter((x) => x.asked);
-  // Finance-specific interpretation first, then the general measures (without the bank-wide coverage row).
+  m.evByArea = q.sections.map((s) => { const rs = ev.filter((r) => r.s.id === s.id); return { s, asked: rs.length, checked: rs.filter((r) => r.status === 'Seen - verified').length, waiting: rs.filter((r) => r.status === 'Requested').length, missing: rs.filter((r) => r.status === 'Not available').length }; }).filter((x) => x.asked);
   const rows = [];
   const add = (label, value, tone, why, effect) => rows.push({ label, value: String(value), tone, why, effect });
   if (m.ivs.length || m.fs.length) {
-    if (m.figures.length) add('Issues affecting the accounts or regulatory reports', m.figures.length, 'concern', `${plural(m.figures.length, 'open issue')} could affect the accuracy of our accounts or of our reports to regulators.`,
-      'Wrong figures could mislead the board, our auditors and our regulators. Reports to the Prudential Regulation Authority may have to be resubmitted, which it treats seriously, and the senior manager responsible for financial information is personally accountable. Auditors may also extend their testing, adding cost.');
-    else add('Issues affecting the accounts or regulatory reports', 0, 'good', 'No open issues are known to affect the accounts or our reports to regulators.', 'Supports confidence that the figures the board, auditors and regulators rely on are accurate.');
-    if (m.money.length) add('Payment and fraud issues', m.money.length, 'concern', `${plural(m.money.length, 'open issue')} could let money be paid wrongly or fraudulently.`,
-      'The bank could lose money through fraudulent or mistaken payments. Under the new legal duty to prevent fraud, a known weak control could also expose the bank to prosecution as well as loss.');
-    else add('Payment and fraud issues', 0, 'good', 'No open issues are known in payment or fraud controls.', 'Protects the bank\'s money and reduces its exposure under the legal duty to prevent fraud.');
-    const weakAreas = m.finAreas.filter((a) => a.ineff);
-    if (weakAreas.length) add('Finance control areas rated ineffective', weakAreas.length, 'concern', `${plural(weakAreas.length, 'finance control area')} ${weakAreas.length === 1 ? 'was' : 'were'} rated ineffective in at least one interview.`,
-      'Where a control is not working, errors or fraud in that area may go undetected until they surface in the accounts, an audit or a regulatory report.');
-    if (m.ivs.length < 2) add('Finance interviews held', m.ivs.length, 'watch', m.ivs.length ? 'Only one finance interview so far.' : 'No finance interviews held yet; this report shows only issues raised elsewhere in the bank.',
-      'Results may not represent the whole finance function; other teams and processes could hold further issues.');
+    c.measures.forEach((x, i) => { const n = m.measureHits[i].length; if (n) add(x.label, n, 'concern', x.why(n), x.effect); else add(x.label, 0, 'good', x.goodWhy, x.goodEffect); });
+    const weak = m.deptAreas.filter((a) => a.ineff);
+    if (weak.length) add(`${capFirst(c.noun)} control areas rated ineffective`, weak.length, 'concern', `${plural(weak.length, 'control area')} ${weak.length === 1 ? 'was' : 'were'} rated ineffective in at least one interview.`,
+      'Where a control is not working, problems in that area may go undetected until they cause harm or surface in an audit or a report to our regulators.');
+    if (m.ivs.length < 2) add(`${capFirst(c.noun)} interviews held`, m.ivs.length, 'watch', m.ivs.length ? `Only one ${c.noun} interview so far.` : `No ${c.noun} interviews held yet; this report shows only issues raised elsewhere in the bank.`,
+      'Results may not represent the whole area; other teams and processes could hold further issues.');
   }
-  m.interpFin = [...rows, ...interpretRows(m, false).filter((r) => r.label !== 'How much of the bank is covered')];
+  m.interpDept = [...rows, ...interpretRows(m, false).filter((r) => r.label !== 'How much of the bank is covered')];
   return m;
 }
-AUD_PURPOSE.finance = [
-  ['Purpose', 'To give the Chief Financial Officer an evidence-based view of the controls over the systems, data, spreadsheets and payments behind the bank\'s accounts and its reports to regulators, and of technology issues elsewhere in the bank that could affect them.'],
-  ['Why the Chief Financial Officer needs it', 'The Chief Financial Officer is the senior manager responsible for the integrity of the bank\'s financial information and its regulatory reporting, and is personally accountable for taking reasonable steps to keep them accurate. Most of the bank\'s figures are produced, moved or calculated by technology - systems, data feeds and spreadsheets - so weaknesses in those controls are weaknesses in the figures.'],
-  ['Legal and regulatory basis', 'The bank must keep adequate accounting records (Companies Act 2006); report accurately and on time to the Prudential Regulation Authority and deal openly with it; and, as a large organisation, may be liable under the new offence of failing to prevent fraud (in force from 1 September 2025 - scope to be confirmed). Our external auditors also rely on these controls when auditing the accounts.'],
-  ['How the results were obtained', 'Through structured interviews with the finance team, comparing what they told us with written procedures, with what our systems actually enforce, and with evidence that controls really operate.'],
-  ['Why the results should be noted', 'Formally noting this report records that these risks have been reported to the accountable senior manager. If figures later prove wrong, or a fraud happens through a known weakness, the bank and the Chief Financial Officer will be asked what was known and what was done about it.'],
-  ['What the Chief Financial Officer is asked to do', 'Note the results; confirm owners and target dates for the serious issues; and consider the matters raised at the end of this report.'],
-];
-const finAreaTone = (t) => (t === 'none' ? '<span class="hint">Not yet assessed</span>' : svcTone(TONE_CLASS[t], TONE_WORD[t]));
-function financeHtml(m) {
-  const e = m.evN;
+const plainSecTitle = (sec) => (P.sections && P.sections[sec.id]) || sec.title;
+const deptAreaTone = (t) => (t === 'none' ? '<span class="hint">Not yet assessed</span>' : svcTone(TONE_CLASS[t], TONE_WORD[t]));
+const deptOfFinding = (m, x) => { const iv = (m.allIvs || m.ivs).find((i) => i.id === x.f.interviewId); return iv ? plainDeptOf(iv) : 'Not linked to an interview'; };
+// Long questionnaires (software development has 29 areas) show only the areas assessed so far.
+const deptAreasShown = (m) => (m.deptAreas.length > 15 ? m.deptAreas.filter((a) => a.n) : m.deptAreas);
+function deptHtml(m) {
+  const c = m.dept, e = m.evN;
   let n = 0; const H = (t) => `<h2>${++n}. ${esc(t)}</h2>`;
-  const deptOf = (x) => { const iv = (m.allIvs || m.ivs).find((i) => i.id === x.f.interviewId); return iv ? plainDeptOf(iv) : 'Not linked to an interview'; };
-  return `<section class="brief aud">${audHead(m, 'finance')}
-    ${H('Why this report has been produced')}${audPurposeHtml('finance')}
+  const kind = Object.keys(DEPTS).find((k) => DEPTS[k] === c);
+  const shown = deptAreasShown(m), notShown = m.deptAreas.filter((a) => !shown.includes(a));
+  return `<section class="brief aud">${audHead(m, kind)}
+    ${H('Why this report has been produced')}${audPurposeHtml(kind)}
     ${H('Summary')}${audOverall(m)}
     <div class="aud-figs">
-      ${audFig('finance interviews', m.ivs.length, plural(m.teams.length, 'team'))}
+      ${audFig(`${c.noun} interviews`, m.ivs.length, plural(m.teams.length, 'team'))}
       ${audFig('issues open', m.open.length, m.elsewhere.length ? `${m.elsewhere.length} raised elsewhere in the bank` : '')}
       ${audFig('serious issues open', m.serious.length, 'rated high or critical', m.serious.length ? 'bad' : 'good')}
-      ${audFig('affecting the accounts or regulatory reports', m.figures.length, 'open issues', m.figures.length ? 'bad' : 'good')}
-      ${audFig('payment and fraud issues', m.money.length, 'open issues', m.money.length ? 'bad' : 'good')}
+      ${c.measures.map((x, i) => audFig(x.fig, m.measureHits[i].length, 'open issues', m.measureHits[i].length ? 'bad' : 'good')).join('')}
       ${audFig('evidence checked', e.asked ? `${e.checked} of ${e.asked}` : '-', 'items proven to work')}
     </div>
-    ${H('What the results mean')}<p>Each result below is assessed as good, a concern, or something to keep an eye on, with the reason and what it could mean for the bank.</p>${interpHtml(m.interpFin, false)}
-    ${H('Finance control areas')}
-    <p>How each area was rated across the finance interviews, and what the controls in it protect.</p>
-    <table class="table print-table aud-table"><thead><tr><th>Area</th><th>What it protects</th><th class="num">Rated</th><th class="num">Effective</th><th class="num">Partly</th><th class="num">Not working</th><th>Position</th></tr></thead><tbody>
-      ${m.finAreas.map((a) => `<tr><td><strong>${esc(a.s.title)}</strong></td><td><small>${esc(a.protects)}</small></td><td class="num">${a.n}</td><td class="num">${a.eff}</td><td class="num">${a.part}</td><td class="num">${a.ineff}</td><td>${finAreaTone(a.tone)}</td></tr>`).join('')}</tbody></table>
+    ${H('What the results mean')}<p>Each result below is assessed as good, a concern, or something to keep an eye on, with the reason and what it could mean for the bank.</p>${interpHtml(m.interpDept, false)}
+    ${H(`${capFirst(c.noun)} control areas`)}
+    <p>How each area was rated across the ${esc(c.noun)} interviews, and what the controls in it protect.</p>
+    ${shown.length ? `<table class="table print-table aud-table"><thead><tr><th>Area</th><th>What it protects</th><th class="num">Rated</th><th class="num">Effective</th><th class="num">Partly</th><th class="num">Not working</th><th>Position</th></tr></thead><tbody>
+      ${shown.map((a) => `<tr><td><strong>${esc(plainSecTitle(a.s))}</strong></td><td><small>${esc(a.protects)}</small></td><td class="num">${a.n}</td><td class="num">${a.eff}</td><td class="num">${a.part}</td><td class="num">${a.ineff}</td><td>${deptAreaTone(a.tone)}</td></tr>`).join('')}</tbody></table>` : '<p class="hint">No areas have been assessed yet.</p>'}
+    ${notShown.length ? `<p class="hint">Not yet assessed: ${esc(notShown.map((a) => plainSecTitle(a.s)).join('; '))}.</p>` : ''}
     ${H('What is working well, and why it matters')}${audGood(m)}
     ${H('Main concerns, and what could happen if they are not addressed')}${audConcerns(m)}
-    ${H('Technology issues elsewhere that could affect the accounts or payments')}
-    ${m.elsewhere.length ? `<p>These were raised in interviews outside finance, but could affect the figures, the regulatory reports or the bank's payments.</p><table class="table print-table aud-table"><thead><tr><th>Issue</th><th>Raised in</th><th>Severity</th><th>Progress</th></tr></thead><tbody>
-      ${m.elsewhere.map((x) => `<tr><td>${esc(plainFinding(x.f).title)}<br><small class="aud-why">${esc(plainFinding(x.f).why)}</small></td><td>${esc(deptOf(x))}</td><td>${esc(x.effR || 'Not yet rated')}</td><td>${esc(progressWord(x))}</td></tr>`).join('')}</tbody></table>` : '<p>None found.</p>'}
+    ${H(c.elsewhereTitle)}
+    ${m.elsewhere.length ? `<p>${esc(c.elsewhereIntro)}</p><table class="table print-table aud-table"><thead><tr><th>Issue</th><th>Raised in</th><th>Severity</th><th>Progress</th></tr></thead><tbody>
+      ${m.elsewhere.map((x) => `<tr><td>${esc(plainFinding(x.f).title)}<br><small class="aud-why">${esc(plainFinding(x.f).why)}</small></td><td>${esc(deptOfFinding(m, x))}</td><td>${esc(x.effR || 'Not yet rated')}</td><td>${esc(progressWord(x))}</td></tr>`).join('')}</tbody></table>` : '<p>None found.</p>'}
     ${H('What is being done')}
     <p>${plural(m.open.length, 'issue')} ${m.open.length === 1 ? 'is' : 'are'} open. ${m.unplanned.length ? `${m.unplanned.length} still ${m.unplanned.length === 1 ? 'needs' : 'need'} an owner or a target date; ` : 'Every open issue has an owner and a target date; '}${m.overdue.length ? `${m.overdue.length} ${m.overdue.length === 1 ? 'is' : 'are'} overdue.` : 'none is overdue.'}</p>
     ${m.open.length ? `<table class="table print-table aud-table"><thead><tr><th>Issue</th><th>Severity</th><th>Owner</th><th>Target</th><th>Progress</th></tr></thead><tbody>
       ${m.open.slice(0, 15).map((x) => `<tr><td>${esc(plainFinding(x.f).title)}</td><td>${esc(x.effR || 'Not yet rated')}</td><td>${esc(x.f.controlOwner || 'Not assigned')}</td><td class="nowrap">${x.f.targetDate ? fmtDate(x.f.targetDate) : 'Not set'}</td><td>${esc(progressWord(x))}</td></tr>`).join('')}</tbody></table>` : ''}
     ${H('Can we prove our controls work?')}
-    <p>${e.asked ? `Interviewers asked the finance team for ${plural(e.asked, 'piece')} of evidence that controls work. ${e.checked} ${e.checked === 1 ? 'has' : 'have'} been seen and checked, ${e.waiting} ${e.waiting === 1 ? 'is' : 'are'} still awaited and ${e.missing} ${e.missing === 1 ? 'does' : 'do'} not exist. Our auditors and regulators rely on evidence: a control that cannot be evidenced is treated as if it did not operate.` : 'No evidence has been requested from the finance team yet.'}</p>
+    <p>${e.asked ? `Interviewers asked the ${esc(c.team)} for ${plural(e.asked, 'piece')} of evidence that controls work. ${e.checked} ${e.checked === 1 ? 'has' : 'have'} been seen and checked, ${e.waiting} ${e.waiting === 1 ? 'is' : 'are'} still awaited and ${e.missing} ${e.missing === 1 ? 'does' : 'do'} not exist. Our auditors and regulators rely on evidence: a control that cannot be evidenced is treated as if it did not operate.` : `No evidence has been requested from the ${esc(c.team)} yet.`}</p>
     ${m.evByArea.length ? `<table class="table print-table aud-table"><thead><tr><th>Area</th><th class="num">Asked for</th><th class="num">Checked</th><th class="num">Awaited</th><th class="num">Does not exist</th></tr></thead><tbody>
-      ${m.evByArea.map((x) => `<tr><td>${esc(x.s.title)}</td><td class="num">${x.asked}</td><td class="num">${x.checked}</td><td class="num">${x.waiting}</td><td class="num">${x.missing}</td></tr>`).join('')}</tbody></table>` : ''}
+      ${m.evByArea.map((x) => `<tr><td>${esc(plainSecTitle(x.s))}</td><td class="num">${x.asked}</td><td class="num">${x.checked}</td><td class="num">${x.waiting}</td><td class="num">${x.missing}</td></tr>`).join('')}</tbody></table>` : ''}
     ${H('Our most important services')}${audServicesTable(m, true)}${servicesImplication(m) ? `<p class="aud-means">${esc(servicesImplication(m))}</p>` : ''}
     ${H('Is it getting better?')}${audTrend(m)}<p class="aud-means">${esc(trendImplication(m))}</p>
     ${H('How these results were produced, and how far to rely on them')}${reliabilityHtml(m, false)}
-    ${H('Matters for the Chief Financial Officer')}${m.doc.decisions ? `<div class="brief-ask">${nl2br(m.doc.decisions)}</div>` : '<p class="hint">None raised in this report.</p>'}
+    ${H(`Matters for the ${c.label}`)}${m.doc.decisions ? `<div class="brief-ask">${nl2br(m.doc.decisions)}</div>` : '<p class="hint">None raised in this report.</p>'}
     </section>`;
 }
-AUD_HTML.finance = financeHtml;
-// Word body for the finance report (the shared pieces are built in wordAudience).
-function wordFinanceBody(m, k) {
+Object.keys(DEPTS).forEach((k) => { AUD_HTML[k] = deptHtml; });
+// Word body for a department report (the shared pieces are built in wordAudience).
+function wordDeptBody(m, k) {
   const { H1, purpose, overall, figs, interp, good, concerns, svcTable, reliab, means, toneFill } = k;
-  const deptOf = (x) => { const iv = (m.allIvs || m.ivs).find((i) => i.id === x.f.interviewId); return iv ? plainDeptOf(iv) : 'Not linked to an interview'; };
-  const e = m.evN;
-  return [H1('Why this report has been produced'), purpose('finance'), H1('Summary'), overall,
-    figs([['finance interviews', m.ivs.length, plural(m.teams.length, 'team')], ['issues open', m.open.length, m.elsewhere.length ? `${m.elsewhere.length} raised elsewhere in the bank` : ''], ['serious issues open', m.serious.length, 'rated high or critical'], ['affecting the accounts or regulatory reports', m.figures.length, 'open issues'], ['payment and fraud issues', m.money.length, 'open issues'], ['evidence checked', e.asked ? `${e.checked} of ${e.asked}` : '-', 'items proven to work']]),
-    H1('What the results mean'), D.p('Each result below is assessed as good, a concern, or something to keep an eye on, with the reason and what it could mean for the bank.'), interp(m.interpFin, false),
-    H1('Finance control areas'), D.table([['Area', 'What it protects', 'Rated', 'Effective', 'Partly', 'Not working', 'Position'], ...m.finAreas.map((a) => [{ content: [{ text: a.s.title, bold: true }] }, { content: [{ text: a.protects, size: 8 }] }, String(a.n), String(a.eff), String(a.part), String(a.ineff), a.tone === 'none' ? 'Not yet assessed' : { content: TONE_WORD[a.tone], fill: toneFill[TONE_CLASS[a.tone]] }])], { header: true, widths: [1.5, 2.2, 0.5, 0.6, 0.5, 0.7, 0.9] }),
+  const c = m.dept, e = m.evN, kind = Object.keys(DEPTS).find((x) => DEPTS[x] === c);
+  const shown = deptAreasShown(m), notShown = m.deptAreas.filter((a) => !shown.includes(a));
+  return [H1('Why this report has been produced'), purpose(kind), H1('Summary'), overall,
+    figs([[`${c.noun} interviews`, m.ivs.length, plural(m.teams.length, 'team')], ['issues open', m.open.length, m.elsewhere.length ? `${m.elsewhere.length} raised elsewhere in the bank` : ''], ['serious issues open', m.serious.length, 'rated high or critical'],
+      ...c.measures.map((x, i) => [x.fig, m.measureHits[i].length, 'open issues']), ['evidence checked', e.asked ? `${e.checked} of ${e.asked}` : '-', 'items proven to work']]),
+    H1('What the results mean'), D.p('Each result below is assessed as good, a concern, or something to keep an eye on, with the reason and what it could mean for the bank.'), interp(m.interpDept, false),
+    H1(`${capFirst(c.noun)} control areas`), shown.length ? D.table([['Area', 'What it protects', 'Rated', 'Effective', 'Partly', 'Not working', 'Position'], ...shown.map((a) => [{ content: [{ text: plainSecTitle(a.s), bold: true }] }, { content: [{ text: a.protects, size: 8 }] }, String(a.n), String(a.eff), String(a.part), String(a.ineff), a.tone === 'none' ? 'Not yet assessed' : { content: TONE_WORD[a.tone], fill: toneFill[TONE_CLASS[a.tone]] }])], { header: true, widths: [1.5, 2.2, 0.5, 0.6, 0.5, 0.7, 0.9] }) : D.p('No areas have been assessed yet.'),
+    notShown.length ? D.p(`Not yet assessed: ${notShown.map((a) => plainSecTitle(a.s)).join('; ')}.`, { style: 'Subtle' }) : '',
     H1('What is working well, and why it matters'), good, H1('Main concerns, and what could happen if they are not addressed'), concerns,
-    H1('Technology issues elsewhere that could affect the accounts or payments'), m.elsewhere.length ? D.table([['Issue', 'Raised in', 'Severity', 'Progress'], ...m.elsewhere.map((x) => [{ content: [{ text: plainFinding(x.f).title, bold: true }, { text: `\n${plainFinding(x.f).why}`, size: 8 }] }, deptOf(x), x.effR || 'Not yet rated', progressWord(x)])], { header: true, widths: [3, 1.3, 0.8, 1] }) : D.p('None found.'),
+    H1(c.elsewhereTitle), m.elsewhere.length ? D.p(c.elsewhereIntro) + D.table([['Issue', 'Raised in', 'Severity', 'Progress'], ...m.elsewhere.map((x) => [{ content: [{ text: plainFinding(x.f).title, bold: true }, { text: `\n${plainFinding(x.f).why}`, size: 8 }] }, deptOfFinding(m, x), x.effR || 'Not yet rated', progressWord(x)])], { header: true, widths: [3, 1.3, 0.8, 1] }) : D.p('None found.'),
     H1('What is being done'), m.open.length ? D.table([['Issue', 'Severity', 'Owner', 'Target', 'Progress'], ...m.open.slice(0, 15).map((x) => [plainFinding(x.f).title, x.effR || 'Not yet rated', x.f.controlOwner || 'Not assigned', x.f.targetDate ? fmtDate(x.f.targetDate) : 'Not set', progressWord(x)])], { header: true, widths: [2.8, 0.8, 1.2, 0.8, 0.9] }) : D.p('No open issues.'),
-    H1('Can we prove our controls work?'), D.p(e.asked ? `Interviewers asked the finance team for ${plural(e.asked, 'piece')} of evidence that controls work. ${e.checked} ${e.checked === 1 ? 'has' : 'have'} been seen and checked, ${e.waiting} ${e.waiting === 1 ? 'is' : 'are'} still awaited and ${e.missing} ${e.missing === 1 ? 'does' : 'do'} not exist. Our auditors and regulators rely on evidence: a control that cannot be evidenced is treated as if it did not operate.` : 'No evidence has been requested from the finance team yet.'),
-    m.evByArea.length ? D.table([['Area', 'Asked for', 'Checked', 'Awaited', 'Does not exist'], ...m.evByArea.map((x) => [x.s.title, String(x.asked), String(x.checked), String(x.waiting), String(x.missing)])], { header: true, widths: [2.4, 0.8, 0.8, 0.8, 1] }) : '',
+    H1('Can we prove our controls work?'), D.p(e.asked ? `Interviewers asked the ${c.team} for ${plural(e.asked, 'piece')} of evidence that controls work. ${e.checked} ${e.checked === 1 ? 'has' : 'have'} been seen and checked, ${e.waiting} ${e.waiting === 1 ? 'is' : 'are'} still awaited and ${e.missing} ${e.missing === 1 ? 'does' : 'do'} not exist. Our auditors and regulators rely on evidence: a control that cannot be evidenced is treated as if it did not operate.` : `No evidence has been requested from the ${c.team} yet.`),
+    m.evByArea.length ? D.table([['Area', 'Asked for', 'Checked', 'Awaited', 'Does not exist'], ...m.evByArea.map((x) => [plainSecTitle(x.s), String(x.asked), String(x.checked), String(x.waiting), String(x.missing)])], { header: true, widths: [2.4, 0.8, 0.8, 0.8, 1] }) : '',
     H1('Our most important services'), svcTable(true), means(servicesImplication(m)),
     H1('Is it getting better?'), D.table([['Measure', 'Now', 'Three months ago', 'Direction'], ...m.trend.map((t) => [t.l, String(t.now), String(t.then), { content: t.dir, fill: t.dir === 'Better' ? toneFill.good : t.dir === 'Worse' ? toneFill.bad : toneFill.warn }])], { header: true, widths: [2.4, 0.8, 1.2, 1] }), means(trendImplication(m)),
     H1('How these results were produced, and how far to rely on them'), reliab(false),
-    H1('Matters for the Chief Financial Officer'), m.doc.decisions ? D.table([[{ content: m.doc.decisions, fill: 'E6EEF8' }]], { widths: [1] }) : D.p('None raised in this report.')];
+    H1(`Matters for the ${c.label}`), m.doc.decisions ? D.table([[{ content: m.doc.decisions, fill: 'E6EEF8' }]], { widths: [1] }) : D.p('None raised in this report.')];
 }
