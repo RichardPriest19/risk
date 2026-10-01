@@ -1,0 +1,11 @@
+{
+  "name": "tech-risk-interview-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Technology Risk Developer Interview workbench for UK banking (local, single-machine).",
+  "main": "server.js",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server.js"
+  }
+}
